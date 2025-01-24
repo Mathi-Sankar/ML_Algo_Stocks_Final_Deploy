@@ -1,8 +1,11 @@
 streamlit
 pandas
-yfinance
 numpy
+yfinance
 scikit-learn
 xgboost
-vaderSentiment
 matplotlib
+vaderSentiment
+beautifulsoup4
+feedparser
+requests
