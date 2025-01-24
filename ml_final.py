@@ -1,3 +1,4 @@
+import pandas as pd
 import streamlit as st
 import pandas as pd
 import yfinance as yf
@@ -8,6 +9,11 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import xgboost as xgb
 import matplotlib.pyplot as plt
 import warnings
+from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
+import requests
+import feedparser
+import ssl
 
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -20,6 +26,29 @@ def get_stock_data(ticker, start_date, end_date):
     return stock
 
 
+# Ensure that this is placed at the beginning of your code with your function definitions
+def final_probability(aco_prob, ml_prob, financials_passed, sentiment_prob):
+    # Calculate the financials effect based on whether they pass or fail
+    financials_weight = 0.20 if financials_passed else -0.05
+    
+    # Calculate final probability with weights
+    final_prob = (0.30 * aco_prob) + (0.30 * ml_prob) + (financials_weight) + (0.20 * sentiment_prob)
+    
+    return final_prob
+
+# Then, find the place where the ACO, ML, and sentiment probabilities are calculated
+# For example, after those calculations:
+
+aco_prob = 0.65  # Replace with your ACO model probability
+ml_prob = 0.70   # Replace with your Random Forest or ML model probability
+financials_passed = True  # Set whether the financials conditions pass or fail
+sentiment_prob = 0.60  # Sentiment analysis probability
+
+# Finally, calculate the final probability using the function
+final_prob = final_probability(aco_prob, ml_prob, financials_passed, sentiment_prob)
+# print(f"Final Probability: {final_prob}")
+
+# Continue with your rest of the code...
 
 # Function to create features for crash prediction
 def create_features(data):
@@ -82,9 +111,9 @@ def Check_fetch_metadata():
     metadata = {
         "source": "Yahoo Finance",
         "frequency": "daily",
-        "fields": ["Open", "High", "Low", "Close", "Volume", "Adj Close"]
+        "fields": ["Open", "High", "Low", "Close", "Volume", "Close"]
     }
-    print("Metadata for data source:", metadata)
+    # print("Metadata for data source:", metadata)
     return metadata
 
 # Function to analyze news sentiment
@@ -99,7 +128,7 @@ def analyze_news_sentiment(news_data):
 def Check_feature_expansion(data):
     data['Random_Feature'] = data['Close'].rolling(window=15).mean()
     data['Noise_Feature'] = np.random.normal(0, 1, len(data))
-    print("Check features added")
+    # print("Check features added")
     return data
 
 
@@ -156,46 +185,43 @@ def calculate_aco_probability(stock_data):
 
         # Pheromone evaporation after each iteration
         pheromone *= pheromone_decay
-        print(f"Iteration {iteration + 1}/{num_iterations}, Total Path Score: {total_path_score}")
-        print(f"Pheromone at last point: {pheromone[-1]}")
+        # print(f"Iteration {iteration + 1}/{num_iterations}, Total Path Score: {total_path_score}")
+        # print(f"Pheromone at last point: {pheromone[-1]}")
 
 
     # The final probability is based on the accumulated pheromone on the last period
     max_pheromone = np.max(pheromone)
     aco_probability = pheromone[-1] * 100 / max_pheromone  # Normalize by max pheromone value
     #aco_probability = np.clip(aco_probability * 1.5, 30, 70)  # Adjust to achieve desired probability range
-    print(f"Max Pheromone: {max_pheromone}, Final ACO Probability: {aco_probability:.2f}%")
+    # print(f"Max Pheromone: {max_pheromone}, Final ACO Probability: {aco_probability:.2f}%")
     return aco_probability
 
 
 # Check function example
 def Check_hyperparameter_exploration(model):
     hyperparams = {"n_estimators": [50, 100, 150], "max_depth": [None, 10, 20]}
-    print("Exploring hyperparameters:", hyperparams)
+    # print("Exploring hyperparameters:", hyperparams)
     return None
 
 
 # Function to evaluate financial parameters
 def evaluate_financials(eps, pe_ratio, industry_pe_ratio, de_ratio, financial_results, price_book_value):
-    """
-    Evaluate the financial parameters to determine if the stock meets the criteria.
-    
-    :param eps: Earnings per share (EPS)
-    pe_ratio: Price-to-earnings ratio (P/E ratio)
-    industry_pe_ratio: Average P/E ratio of the industry
-    de_ratio: Debt-to-equity ratio (D/E ratio)
-    financial_results: List of financial results for previous quarters
-    price_book_value: Price-to-book value ratio (P/B ratio)
-    
-    """
-    # Criteria for evaluation
-    is_eps_high = eps > 0  # EPS should be high (greater than 0)
-    is_pe_low = pe_ratio < industry_pe_ratio  # P/E ratio less than industry average
-    is_de_low = de_ratio < 1  # D/E ratio should be less than 1 (you can adjust this threshold)
-    are_financial_results_positive = all(result > 0 for result in financial_results)  # All previous quarters should have positive results
-    is_price_book_low = price_book_value < 1  # P/B ratio should be less than 1
+    # Convert values to floats or set default
+    eps = float(eps) if eps not in ["N/A", None] else 0
+    pe_ratio = float(pe_ratio) if pe_ratio not in ["N/A", None] else float('inf')
+    industry_pe_ratio = float(industry_pe_ratio) if industry_pe_ratio not in ["N/A", None] else float('inf')
+    de_ratio = float(de_ratio) if de_ratio not in ["N/A", None] else float('inf')
+    price_book_value = float(price_book_value) if price_book_value not in ["N/A", None] else float('inf')
 
-    return all([is_eps_high, is_pe_low, is_de_low, are_financial_results_positive, is_price_book_low])
+    # Perform comparisons
+    is_eps_high = eps > 0
+    is_pe_ratio_low = pe_ratio < industry_pe_ratio
+    is_de_ratio_low = de_ratio < 1  # Example condition
+    is_price_book_value_low = price_book_value < 1  # Example condition
+
+    # Combine conditions into final evaluation
+    return all([is_eps_high, is_pe_ratio_low, is_de_ratio_low, is_price_book_value_low])
+
 
 
 
@@ -206,11 +232,10 @@ def Check_sentiment_metrics(sentiment):
         "neutral_threshold": 0,
         "negative_threshold": -0.1
     }
-    print("Sentiment metrics:", metrics)
+    # print("Sentiment metrics:", metrics)
     return metrics
 
-import pandas as pd
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
 
 # Initialize the VADER sentiment analyzer
 analyzer = SentimentIntensityAnalyzer()
@@ -220,19 +245,90 @@ def get_sentiment(headline):
     sentiment = analyzer.polarity_scores(headline)
     return sentiment['compound']  # Return the compound score
 
-# Function to analyze news sentiment
-def analyze_news_sentiment(news_data):
-    news_df = pd.DataFrame(news_data)
-    news_df['Sentiment'] = news_df['Headline'].apply(get_sentiment)
-    average_sentiment_prob = news_df['Sentiment'].mean() * 100  # Average sentiment
-    return average_sentiment_prob, news_df[['Date', 'Headline', 'Sentiment']]
-
 
 # Check function example
 def Check_crash_probability_logging(probability):
-    print("Logging crash probability:", probability)
+    # print("Logging crash probability:", probability)
     log_entry = {"timestamp": pd.Timestamp.now(), "probability": probability}
     return log_entry
+
+
+def get_news_data(stock_ticker):
+    if not stock_ticker:
+        return f"Company '{stock_ticker}' not found in the dictionary."
+    
+    # URL to fetch data (Example: Yahoo Finance)
+    url = f"https://finance.yahoo.com/quote/{stock_ticker}?p={stock_ticker}"
+    
+    try:
+        # Send HTTP request to fetch the web page
+        response = requests.get(url)
+        response.raise_for_status()  # Raise exception for HTTP errors
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Extract stock price (example using Yahoo Finance structure)
+        price = soup.find('fin-streamer', {'data-field': 'regularMarketPrice'}).text
+        change = soup.find('fin-streamer', {'data-field': 'regularMarketChangePercent'}).text
+        
+        # Extract recent news headlines
+        news_section = soup.find_all('li', {'class': 'js-stream-content'})
+        news = []
+        
+        # Assume today's date and subtract days for each news item
+        today = datetime.today()
+        
+        for idx, item in enumerate(news_section[:5]):  # Get top 5 news items
+            headline = item.find('h3').text
+            link = item.find('a')['href']
+            
+            # Create a date for each news item (starting from today)
+            news_date = (today - timedelta(days=idx)).strftime('%Y-%m-%d')
+            
+            news.append({
+                "Date": news_date,
+                "Headline": headline,
+                "Link": f"https://finance.yahoo.com{link}"
+            })
+        
+        # Return the data in the desired format
+        return {stock_ticker: news}
+    
+    except requests.exceptions.RequestException as e:
+        return f"Error fetching data for '{stock_ticker}': {e}"
+    
+
+def get_top_headlines():
+    url = "https://news.yahoo.com/rss"
+    
+    try:
+        # Create an unverified SSL context
+        context = ssl._create_unverified_context()
+        
+        # Define a custom User-Agent header to mimic a browser request
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        # Fetch the RSS feed using requests with the unverified SSL context and custom headers
+        response = requests.get(url, verify=False, headers=headers)
+        
+        # Check if the request was successful
+        if response.status_code == 200:
+            # Parse the RSS feed
+            feed = feedparser.parse(response.text)
+            
+            # Get the top 3 headlines
+            headlines = [entry.title for entry in feed.entries[:3]]
+            
+            return headlines if headlines else ["No headlines found."]
+        else:
+            return [f"Error fetching news: {response.status_code}"]
+    
+    except Exception as e:
+        return [f"Error fetching news: {e}"]
+
+
+
 
 
 # Main function to run the trading strategy
@@ -265,6 +361,10 @@ def run_trading_strategy(stock_data_dict, news_data, financial_data):
         st.write(f"Financial Evaluation: {'Pass' if financial_evaluation else 'Fail'}")
 
         # Analyze news sentiment
+        news_data = get_news_data(stock)
+        #print(news_data)
+        if not news_data[stock]:  # If the list for the stock is empty
+            news_data[stock].append({"Date": datetime.today().strftime('%Y-%m-%d'), "Headline": "Good", "Link": ""})
         news_sentiment_prob, news_sentiment_df = analyze_news_sentiment(news_data[stock])
         st.write("#### News Sentiment")
         st.write(news_sentiment_df)  # Display sentiment analysis
@@ -293,7 +393,7 @@ def run_trading_strategy(stock_data_dict, news_data, financial_data):
 # Check function example
 def Check_news_sentiment_analysis(news_df):
     analysis = {"num_positive": sum(news_df['Sentiment'] > 0.1), "num_negative": sum(news_df['Sentiment'] < -0.1)}
-    print("Detailed sentiment analysis:", analysis)
+    # print("Detailed sentiment analysis:", analysis)
     return analysis
 
 
@@ -342,42 +442,16 @@ stock_keywords = {
 
 
 
-# Sample news data
-news_data = {
-    'AAPL': [
-        {"Date": "2024-10-01", "Headline": "Company X reports record-breaking profits for Q3"},
-        {"Date": "2024-10-02", "Headline": "Company X faces new lawsuit from a major client"},
-    ],
-    'GOOGL': [
-        {"Date": "2024-10-01", "Headline": "Company Y expands into new markets."},
-        {"Date": "2024-10-02", "Headline": "Company Y experiences a decline in ad revenues."},
-    ],
-    'TSLA': [
-        {"Date": "2024-10-01", "Headline": "Company Z launches new electric vehicle model."},
-        {"Date": "2024-10-02", "Headline": "Company Z recalls vehicles due to safety concerns."},
-    ],
-}
-
 # Check function example
 def Check_aco_logging(path_score):
-    print("ACO path score:", path_score)
+    # print("ACO path score:", path_score)
     return {"path_score": path_score, "timestamp": pd.Timestamp.now()}
 
-
-# Sample financial data for demonstration
-financial_data = {
-    'EPS': 3.5,
-    'P/E Ratio': 20,
-    'Industry P/E Ratio': 25,
-    'D/E Ratio': 0.5,
-    'Previous Quarters Financial Results': [2.5, 3.0, 3.2, 4.0],  # Positive results
-    'P/B Ratio': 0.8
-}
 
 
 # Check financial feature logging
 def Check_log_financials(financial_data):
-    print("Logging financial data:", financial_data)
+    # print("Logging financial data:", financial_data)
     return None
 
 
@@ -387,25 +461,54 @@ ticker = st.sidebar.text_input('Ticker', 'AAPL')
 start_date = st.sidebar.date_input('Start Date', value=pd.to_datetime('2021-12-24'))
 end_date = st.sidebar.date_input('End Date', value=pd.to_datetime('2022-12-24'))
 
+def get_stock_financial_data(stock_symbol):
+    # Fetch stock data
+    stock = yf.Ticker(stock_symbol)
+
+    # Get financial data
+    financial_data = {
+        'EPS': stock.info.get('epsTrailingTwelveMonths', 'N/A'),  # Earnings Per Share
+        'P/E Ratio': stock.info.get('trailingPE', 'N/A'),  # Price to Earnings Ratio
+        'Industry P/E Ratio': stock.info.get('peRatio', 'N/A'),  # Industry P/E Ratio
+        'D/E Ratio': stock.info.get('debtToEquity', 'N/A'),  # Debt to Equity Ratio
+        'Previous Quarters Financial Results': stock.financials.loc['Net Income'].tail(4).tolist(),  # Previous 4 Quarters Earnings
+        'P/B Ratio': stock.info.get('priceToBook', 'N/A')  # Price to Book Ratio
+    }
+    
+    return financial_data
+
+# Example usage:
+financial_data = get_stock_financial_data('AAPL')
 
 # Fetch stock data
 data = get_stock_data(ticker, start_date, end_date)
+print('111111111111111111111')
+print(data.columns)
 
 # Display the title and stock graph at the beginning
 st.title('Stock Trading Strategy with Machine Learning and Sentiment Analysis')
 
 # Plot stock data first (before running the strategy)
 fig, ax = plt.subplots()
-ax.plot(data.index, data['Adj Close'], label=ticker, color='blue')
+ax.plot(data.index, data['Close'], label=ticker, color='blue')
 ax.set_title(ticker, fontsize=16)
 ax.set_xlabel('Date', fontsize=12)
-ax.set_ylabel('Adj Close', fontsize=12)
+ax.set_ylabel('Close', fontsize=12)
 plt.xticks(rotation=45)
 st.pyplot(fig)
+listt = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'FB', 'NFLX', 'BRK.A', 'NVDA', 'DIS']
 
+print("Before")
+
+headlines = get_top_headlines()
+for idx, headline in enumerate(headlines, 1):
+    print(f"{idx}. {headline}")
+
+print("After")
 
 # Place the Run Strategy button in the sidebar below End Date
 if st.sidebar.button("Run Strategy"):
     selected_stocks = [ticker]  # Only the entered ticker is selected
     stock_data_dict = {ticker: data}  # Use the fetched stock data
+    news_data = get_news_data(ticker)
     run_trading_strategy(stock_data_dict, news_data, financial_data)
